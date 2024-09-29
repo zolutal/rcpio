@@ -1,4 +1,3 @@
-pub mod parse;
 mod defs;
 
 use defs::{CPIO_FIELD_LEN, CPIO_HEADER_LEN, CPIO_MAGIC_LEN};
@@ -102,18 +101,18 @@ fn mode_to_str(mode: u64) -> Result<String, Error> {
 }
 
 struct CpioBuilderEntry {
-    c_ino		: u32,
-    c_mode		: u32,
-    c_uid		: u32,
-    c_gid		: u32,
-    c_nlink		: u32,
-    c_mtime		: u32,
-    c_filesize	: u32,
-    c_devmajor	: u32,
-    c_devminor	: u32,
-    c_rdevmajor	: u32,
-    c_rdevminor	: u32,
-    c_namesize	: u32,
+    c_ino       : u32,
+    c_mode      : u32,
+    c_uid       : u32,
+    c_gid       : u32,
+    c_nlink     : u32,
+    c_mtime     : u32,
+    c_filesize  : u32,
+    c_devmajor  : u32,
+    c_devminor  : u32,
+    c_rdevmajor : u32,
+    c_rdevminor : u32,
+    c_namesize  : u32,
 }
 
 impl CpioBuilderEntry {
@@ -253,17 +252,17 @@ impl CpioBuilder {
 
             let entry = CpioBuilderEntry {
                 c_ino       : meta.st_ino() as u32,
-                c_mode		: meta.st_mode(),
-                c_uid		: meta.st_uid(),
-                c_gid		: meta.st_gid(),
-                c_nlink		: meta.st_nlink() as u32,
-                c_mtime		: meta.st_mtime() as u32,
-                c_filesize	: content.len() as u32,
-                c_devmajor	: major(meta.st_dev() as u32),
-                c_devminor	: minor(meta.st_dev() as u32),
-                c_rdevmajor	: major(meta.st_rdev() as u32),
-                c_rdevminor	: minor(meta.st_rdev() as u32),
-                c_namesize	: (internal_path.len() + 1) as u32,
+                c_mode      : meta.st_mode(),
+                c_uid       : meta.st_uid(),
+                c_gid       : meta.st_gid(),
+                c_nlink     : meta.st_nlink() as u32,
+                c_mtime     : meta.st_mtime() as u32,
+                c_filesize  : content.len() as u32,
+                c_devmajor  : major(meta.st_dev() as u32),
+                c_devminor  : minor(meta.st_dev() as u32),
+                c_rdevmajor : major(meta.st_rdev() as u32),
+                c_rdevminor : minor(meta.st_rdev() as u32),
+                c_namesize  : (internal_path.len() + 1) as u32,
             };
 
             // TODO: calculate crc checksum
@@ -340,20 +339,20 @@ impl<'a> Cpio<'a> {
 }
 
 struct CpioEntryHeader<'a> {
-    c_magic		: &'a[u8],
-    c_ino		: &'a[u8],
-    c_mode		: &'a[u8],
-    c_uid		: &'a[u8],
-    c_gid		: &'a[u8],
-    c_nlink		: &'a[u8],
-    c_mtime		: &'a[u8],
-    c_filesize	: &'a[u8],
-    c_devmajor	: &'a[u8],
-    c_devminor	: &'a[u8],
-    c_rdevmajor	: &'a[u8],
-    c_rdevminor	: &'a[u8],
-    c_namesize	: &'a[u8],
-    c_check		: &'a[u8],
+    c_magic     : &'a[u8],
+    c_ino       : &'a[u8],
+    c_mode      : &'a[u8],
+    c_uid       : &'a[u8],
+    c_gid       : &'a[u8],
+    c_nlink     : &'a[u8],
+    c_mtime     : &'a[u8],
+    c_filesize  : &'a[u8],
+    c_devmajor  : &'a[u8],
+    c_devminor  : &'a[u8],
+    c_rdevmajor : &'a[u8],
+    c_rdevminor : &'a[u8],
+    c_namesize  : &'a[u8],
+    c_check     : &'a[u8],
 }
 
 pub struct CpioEntry<'a> {
@@ -383,17 +382,17 @@ impl<'a> CpioEntry<'a> {
             c_magic     : &mem[index..index+CPIO_MAGIC_LEN],
             c_ino       : &mem[index+CPIO_MAGIC_LEN+( 0*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 1*CPIO_FIELD_LEN)],
             c_mode      : &mem[index+CPIO_MAGIC_LEN+( 1*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 2*CPIO_FIELD_LEN)],
-            c_uid		: &mem[index+CPIO_MAGIC_LEN+( 2*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 3*CPIO_FIELD_LEN)],
-            c_gid		: &mem[index+CPIO_MAGIC_LEN+( 3*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 4*CPIO_FIELD_LEN)],
-            c_nlink		: &mem[index+CPIO_MAGIC_LEN+( 4*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 5*CPIO_FIELD_LEN)],
-            c_mtime		: &mem[index+CPIO_MAGIC_LEN+( 5*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 6*CPIO_FIELD_LEN)],
-            c_filesize	: &mem[index+CPIO_MAGIC_LEN+( 6*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 7*CPIO_FIELD_LEN)],
-            c_devmajor	: &mem[index+CPIO_MAGIC_LEN+( 7*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 8*CPIO_FIELD_LEN)],
-            c_devminor	: &mem[index+CPIO_MAGIC_LEN+( 8*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 9*CPIO_FIELD_LEN)],
-            c_rdevmajor	: &mem[index+CPIO_MAGIC_LEN+( 9*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+(10*CPIO_FIELD_LEN)],
-            c_rdevminor	: &mem[index+CPIO_MAGIC_LEN+(10*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+(11*CPIO_FIELD_LEN)],
-            c_namesize	: &mem[index+CPIO_MAGIC_LEN+(11*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+(12*CPIO_FIELD_LEN)],
-            c_check		: &mem[index+CPIO_MAGIC_LEN+(12*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+(13*CPIO_FIELD_LEN)],
+            c_uid       : &mem[index+CPIO_MAGIC_LEN+( 2*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 3*CPIO_FIELD_LEN)],
+            c_gid       : &mem[index+CPIO_MAGIC_LEN+( 3*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 4*CPIO_FIELD_LEN)],
+            c_nlink     : &mem[index+CPIO_MAGIC_LEN+( 4*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 5*CPIO_FIELD_LEN)],
+            c_mtime     : &mem[index+CPIO_MAGIC_LEN+( 5*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 6*CPIO_FIELD_LEN)],
+            c_filesize  : &mem[index+CPIO_MAGIC_LEN+( 6*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 7*CPIO_FIELD_LEN)],
+            c_devmajor  : &mem[index+CPIO_MAGIC_LEN+( 7*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 8*CPIO_FIELD_LEN)],
+            c_devminor  : &mem[index+CPIO_MAGIC_LEN+( 8*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+( 9*CPIO_FIELD_LEN)],
+            c_rdevmajor : &mem[index+CPIO_MAGIC_LEN+( 9*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+(10*CPIO_FIELD_LEN)],
+            c_rdevminor : &mem[index+CPIO_MAGIC_LEN+(10*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+(11*CPIO_FIELD_LEN)],
+            c_namesize  : &mem[index+CPIO_MAGIC_LEN+(11*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+(12*CPIO_FIELD_LEN)],
+            c_check     : &mem[index+CPIO_MAGIC_LEN+(12*CPIO_FIELD_LEN)..index+CPIO_MAGIC_LEN+(13*CPIO_FIELD_LEN)],
         };
 
         Ok(Self { index, format, mem, header })
