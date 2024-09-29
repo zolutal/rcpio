@@ -113,14 +113,11 @@ struct CpioBuilderEntry {
     c_rdevmajor : u32,
     c_rdevminor : u32,
     c_namesize  : u32,
+    c_check     : u32,
 }
 
 impl CpioBuilderEntry {
-    pub(crate) fn to_bytes(
-        &self,
-        format: &CpioFormat,
-        check: Option<u32>
-    ) -> Vec<u8> {
+    pub(crate) fn to_bytes(&self, format: &CpioFormat) -> Vec<u8> {
         let mut out = vec![];
 
         match format {
@@ -146,19 +143,7 @@ impl CpioBuilderEntry {
         entry_str.push_str(&format!("{:08x}", &self.c_rdevmajor));
         entry_str.push_str(&format!("{:08x}", &self.c_rdevminor));
         entry_str.push_str(&format!("{:08x}", &self.c_namesize));
-
-        match format {
-            CpioFormat::Newc => {
-                entry_str.push_str(&format!("{:08x}", 0u32));
-            },
-            CpioFormat::Crc => {
-                if let Some(check) = check {
-                    entry_str.push_str(&format!("{:08x}", check));
-                } else {
-                    unreachable!("Tried to create a CRC archive without providing a check value");
-                }
-            },
-        }
+        entry_str.push_str(&format!("{:08x}", &self.c_check));
 
         out.append(&mut entry_str.to_uppercase().as_bytes().to_vec());
         out
@@ -248,6 +233,19 @@ impl CpioBuilder {
                 content.append(&mut target_path.to_string_lossy().to_string().as_bytes().to_vec());
             }
 
+            let check: u32 = match self.format {
+                CpioFormat::Newc => 0,
+                CpioFormat::Crc => {
+                    let mut res = 0u32;
+                    for b in &content {
+                        res = res.wrapping_add(*b as u32);
+                    }
+                    res
+                }
+            };
+
+            println!("check: {:x}", check);
+
             let mut entry_data: Vec<u8> = vec![];
 
             let entry = CpioBuilderEntry {
@@ -263,10 +261,10 @@ impl CpioBuilder {
                 c_rdevmajor : major(meta.st_rdev() as u32),
                 c_rdevminor : minor(meta.st_rdev() as u32),
                 c_namesize  : (internal_path.len() + 1) as u32,
+                c_check     : check,
             };
 
-            // TODO: calculate crc checksum
-            entry_data.append(&mut entry.to_bytes(&self.format, None));
+            entry_data.append(&mut entry.to_bytes(&self.format));
 
             // null-terminated internal path
             entry_data.append(&mut internal_path.as_bytes().to_vec());

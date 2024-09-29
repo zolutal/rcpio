@@ -26,6 +26,10 @@ enum Commands {
 
         /// Output path for created archive
         output_path: PathBuf,
+
+        /// Use the SVR4 CRC format (default is no CRC)
+        #[clap(long, action)]
+        crc: bool,
     },
     // /// Extract a cpio archive to a directory
     // Unar {
@@ -69,10 +73,15 @@ fn collect_files(dir: &PathBuf) -> Vec<PathBuf> {
 fn main() -> Result<()> {
     let args = CmdArgs::parse();
     match args.commands {
-        Commands::Ar { directory_path, output_path } => {
-            let mut builder = rcpio::CpioBuilder::new(
+        Commands::Ar { directory_path, output_path, crc } => {
+
+            let format = if crc {
+                rcpio::CpioFormat::Crc
+            } else {
                 rcpio::CpioFormat::Newc
-            );
+            };
+
+            let mut builder = rcpio::CpioBuilder::new(format);
 
             let files = collect_files(&directory_path);
             for file in files {
