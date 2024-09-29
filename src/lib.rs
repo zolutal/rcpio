@@ -266,6 +266,7 @@ impl CpioBuilder {
                 c_namesize	: (internal_path.len() + 1) as u32,
             };
 
+            // TODO: calculate crc checksum
             entry_data.append(&mut entry.to_bytes(&self.format, None));
 
             // null-terminated internal path
