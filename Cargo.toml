@@ -1,0 +1,16 @@
+[package]
+name = "rcpio"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rcpio"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+anyhow = "1.0.89"
+clap = { version = "4.2", features = ["derive"] }
+memmap2 = "0.9.5"
+thiserror = "1.0.64"
+fallible-iterator = "0.2"
+walkdir = "2.5.0"
