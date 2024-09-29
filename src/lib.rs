@@ -424,6 +424,34 @@ impl<'a> CpioEntry<'a> {
         mode_to_str(self.mode()?)
     }
 
+    pub fn is_link(&self) -> Result<bool, Error> {
+        Ok((self.mode()? & defs::S_IFMT) == defs::S_IFLNK)
+    }
+
+    pub fn is_dir(&self) -> Result<bool, Error> {
+        Ok((self.mode()? & defs::S_IFMT) == defs::S_IFDIR)
+    }
+
+    pub fn is_reg(&self) -> Result<bool, Error> {
+        Ok((self.mode()? & defs::S_IFMT) == defs::S_IFREG)
+    }
+
+    pub fn is_sock(&self) -> Result<bool, Error> {
+        Ok((self.mode()? & defs::S_IFMT) == defs::S_IFSOCK)
+    }
+
+    pub fn is_fifo(&self) -> Result<bool, Error> {
+        Ok((self.mode()? & defs::S_IFMT) == defs::S_IFIFO)
+    }
+
+    pub fn is_blk(&self) -> Result<bool, Error> {
+        Ok((self.mode()? & defs::S_IFMT) == defs::S_IFBLK)
+    }
+
+    pub fn is_chr(&self) -> Result<bool, Error> {
+        Ok((self.mode()? & defs::S_IFMT) == defs::S_IFCHR)
+    }
+
     pub fn uid(&self) -> Result<u64, Error> {
         let str_uid = from_utf8(self.header.c_uid).map_err(|_|
             Error::EntryConversionError(String::from("Converting 'c_uid' from utf8 failed"))

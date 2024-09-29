@@ -109,15 +109,28 @@ fn main() -> Result<()> {
 
             let mut iter = cpio.iter_files();
             while let Some(file) = iter.next()? {
-                println!(
-                    "{} {:>2} {:>4} {:>4} {:>8} {}",
-                    file.mode_str()?,
-                    file.nlink()?,
-                    file.uid()?,
-                    file.gid()?,
-                    file.filesize()?,
-                    std::str::from_utf8(file.name()?)?,
-                );
+                if file.is_link()? {
+                    println!(
+                        "{} {:>2} {:>4} {:>4} {:>8} {} -> {}",
+                        file.mode_str()?,
+                        file.nlink()?,
+                        file.uid()?,
+                        file.gid()?,
+                        file.filesize()?,
+                        std::str::from_utf8(file.name()?)?,
+                        std::str::from_utf8(file.file_content()?)?,
+                    );
+                } else {
+                    println!(
+                        "{} {:>2} {:>4} {:>4} {:>8} {}",
+                        file.mode_str()?,
+                        file.nlink()?,
+                        file.uid()?,
+                        file.gid()?,
+                        file.filesize()?,
+                        std::str::from_utf8(file.name()?)?,
+                    );
+                }
             }
         },
         Commands::Cat { archive_path, internal_path } => {
