@@ -28,8 +28,12 @@ enum Commands {
         output_path: PathBuf,
 
         /// Use the SVR4 CRC format (default is no CRC)
-        #[clap(long, action)]
+        #[clap(short='c', long, action)]
         crc: bool,
+
+        /// Compress the archive in gzip format
+        #[clap(short='g', long, action)]
+        gzip: bool
     },
     // /// Extract a cpio archive to a directory
     // Unar {
@@ -73,8 +77,7 @@ fn collect_files(dir: &PathBuf) -> Vec<PathBuf> {
 fn main() -> Result<()> {
     let args = CmdArgs::parse();
     match args.commands {
-        Commands::Ar { directory_path, output_path, crc } => {
-
+        Commands::Ar { directory_path, output_path, crc, gzip } => {
             let format = if crc {
                 rcpio::CpioFormat::Crc
             } else {
@@ -99,7 +102,7 @@ fn main() -> Result<()> {
                     }
                 }
             }
-            builder.write(&output_path)?;
+            builder.write(&output_path, gzip)?;
         },
         Commands::Ls { archive_path } => {
             let archive = File::open(archive_path)?;

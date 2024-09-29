@@ -1,12 +1,15 @@
 mod defs;
-
 use defs::{CPIO_FIELD_LEN, CPIO_HEADER_LEN, CPIO_MAGIC_LEN};
-use fallible_iterator::FallibleIterator;
+
 use std::fs::{read_link, symlink_metadata, File};
 use std::io::{Read, Write};
 use std::os::linux::fs::MetadataExt;
 use std::str::from_utf8;
 use std::path::{Path, PathBuf};
+
+use fallible_iterator::FallibleIterator;
+use flate2::write::GzEncoder;
+use flate2::Compression;
 
 /// Error type for parsing cpio archives
 #[derive(thiserror::Error, Debug)]
@@ -28,6 +31,9 @@ pub enum Error {
 
     #[error("File system error: {0}")]
     FileSystemError(String),
+
+    #[error("Encoder error: {0}")]
+    EncoderError(String),
 }
 
 #[derive(Clone, Copy)]
@@ -183,15 +189,23 @@ impl CpioBuilder {
         Ok(())
     }
 
-    pub fn write(&self, archive_path: &PathBuf) -> Result<(), Error> {
+    pub fn write(&self, archive_path: &PathBuf, gzip: bool) -> Result<(), Error> {
         let mut out_fp = File::create(archive_path).map_err(|_|
             Error::FileSystemError(
                 format!("Failed to create output file {}", archive_path.to_string_lossy())
             )
         )?;
 
+        let mut out: Vec<u8> = vec![];
+
         // bytes written, need to know this for alignment
         let mut written: usize = 0;
+
+        let mut encoder = if gzip {
+            Some(GzEncoder::new(Vec::new(), Compression::default()))
+        } else {
+            None
+        };
 
         for (fs_path, internal_path) in &self.entries {
             let mut fp = File::open(fs_path).map_err(|_|
@@ -271,7 +285,7 @@ impl CpioBuilder {
             entry_data.push(0);
 
             // pad to four byte alignment before start of file contents
-            let curr = written + entry_data.len();
+            let curr = out.len() + entry_data.len();
             if curr % 4 != 0 {
                 entry_data.resize(entry_data.len() + (4 - (curr % 4)), 0)
             }
@@ -279,16 +293,12 @@ impl CpioBuilder {
             entry_data.append(&mut content);
 
             // pad to four byte alignment at the end of file contents
-            let curr = written + entry_data.len();
+            let curr = out.len() + entry_data.len();
             if curr % 4 != 0 {
                 entry_data.resize(entry_data.len() + (4 - (curr % 4)), 0)
             }
 
-            written += entry_data.len();
-
-            out_fp.write(&entry_data).map_err(|_|
-                Error::FileSystemError(String::from("failed to write entry to archive file"))
-            )?;
+            out.append(&mut entry_data);
         }
 
         // write trailer
@@ -296,23 +306,35 @@ impl CpioBuilder {
             CpioFormat::Newc => defs::NEWC_MAGIC,
             CpioFormat::Crc => defs::CRC_MAGIC,
         };
-        out_fp.write(magic).map_err(|_|
-            Error::FileSystemError(String::from("failed to write trailer magic to archive file"))
-        )?;
-        out_fp.write(defs::TRAILER).map_err(|_|
-            Error::FileSystemError(String::from("failed to write trailer to archive file"))
-        )?;
 
-        written += magic.len() + defs::TRAILER.len();
+        out.append(&mut magic.to_vec());
+        out.append(&mut defs::TRAILER.to_vec());
 
         // pad to 0x100 alignment
         let mut padding = vec![];
-        if written % 100 != 0 {
-            padding.resize(4 - (written % 4), 0)
+        if out.len() % 100 != 0 {
+            padding.resize(4 - (out.len() % 4), 0)
         }
-        out_fp.write(&padding).map_err(|_|
-            Error::FileSystemError(String::from("failed to write trailing padding to archive file"))
-        )?;
+        out.append(&mut padding);
+
+        if let Some(ref mut encoder) = encoder {
+            encoder.write_all(&out).map_err(|_|
+                Error::EncoderError(String::from("failed when writing to encoder"))
+            )?;
+        }
+
+        if let Some(encoder) = encoder {
+            let compressed = encoder.finish().map_err(|_|
+                Error::EncoderError(String::from("failed when calling 'finish()' on encoder"))
+            )?;
+            out_fp.write(&compressed).map_err(|_|
+                Error::FileSystemError(String::from("failed to write compressed data to archive file"))
+            )?;
+        } else {
+            out_fp.write(&out).map_err(|_|
+                Error::FileSystemError(String::from("failed to write data to archive file"))
+            )?;
+        }
 
         Ok(())
     }
