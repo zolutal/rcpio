@@ -198,9 +198,6 @@ impl CpioBuilder {
 
         let mut out: Vec<u8> = vec![];
 
-        // bytes written, need to know this for alignment
-        let mut written: usize = 0;
-
         let mut encoder = if gzip {
             Some(GzEncoder::new(Vec::new(), Compression::default()))
         } else {
@@ -257,8 +254,6 @@ impl CpioBuilder {
                     res
                 }
             };
-
-            println!("check: {:x}", check);
 
             let mut entry_data: Vec<u8> = vec![];
 

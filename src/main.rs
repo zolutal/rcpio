@@ -93,11 +93,7 @@ fn main() -> Result<()> {
                         let internal_path = file_str
                             .trim_start_matches(directory_path_str)
                             .trim_start_matches('/');
-                        println!(
-                            "{} -> {}",
-                            file.to_str().unwrap(),
-                            &internal_path
-                        );
+                        println!("{}", &internal_path);
                         builder.insert(&file, internal_path)?;
                     }
                 }
