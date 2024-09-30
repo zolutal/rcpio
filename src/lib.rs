@@ -190,51 +190,55 @@ impl CpioBuilder {
     }
 
     pub fn write(&self, archive_path: &PathBuf, gzip: bool) -> Result<(), Error> {
-        let mut out_fp = File::create(archive_path).map_err(|_|
-            Error::FileSystemError(
-                format!("Failed to create output file {}", archive_path.to_string_lossy())
-            )
-        )?;
 
         let mut out: Vec<u8> = vec![];
 
         let mut encoder = if gzip {
-            Some(GzEncoder::new(Vec::new(), Compression::default()))
+            let out_fp = File::create(archive_path).map_err(|_|
+                Error::FileSystemError(
+                    format!("Failed to create output file for gzip stream {}", archive_path.to_string_lossy())
+                )
+            )?;
+            Some(GzEncoder::new(out_fp, Compression::default()))
         } else {
             None
         };
 
         for (fs_path, internal_path) in &self.entries {
-            let mut fp = File::open(fs_path).map_err(|_|
-                Error::FileSystemError(
-                    format!("Failed to open file {}", fs_path.to_string_lossy())
-                )
-            )?;
 
-            let mut meta = symlink_metadata(fs_path).map_err(|_| {
+            let symlink_meta = symlink_metadata(fs_path).map_err(|e| {
                 Error::FileSystemError(
-                    format!("Failed to get metadata for symlink {}", fs_path.to_string_lossy())
+                    format!(
+                        "Failed to get metadata for symlink, {e}: {}",
+                        fs_path.to_string_lossy()
+                    )
                 )
             })?;
 
-            if !meta.is_symlink() {
-                meta = fp.metadata().map_err(|_| {
-                    Error::FileSystemError(
-                        format!("Failed to get metadata for file {}", fs_path.to_string_lossy())
-                    )
-                })?;
-            }
 
             let mut content = vec![];
-
-            // nothing to read if path is "."
-            if internal_path != "." && meta.is_file() {
-                fp.read_to_end(&mut content).map_err(|_|
+            let meta = if !symlink_meta.is_symlink() {
+                let mut fp = File::open(fs_path).map_err(|_|
                     Error::FileSystemError(
                         format!("failed to read to end of file {}", fs_path.to_string_lossy())
                     )
                 )?;
-            } else if meta.is_symlink() {
+                let meta = fp.metadata().map_err(|_| {
+                    Error::FileSystemError(
+                        format!("Failed to get metadata for file {}", fs_path.to_string_lossy())
+                    )
+                })?;
+
+                // nothing to read if path is "."
+                if internal_path != "." && meta.is_file() {
+                    fp.read_to_end(&mut content).map_err(|_|
+                        Error::FileSystemError(
+                            format!("failed to read to end of file {}", fs_path.to_string_lossy())
+                        )
+                    )?;
+                }
+                meta
+            } else {
                 // for symlinks the target path goes where the file content would
                 let target_path = read_link(fs_path).map_err(|_| {
                     Error::FileSystemError(
@@ -242,7 +246,8 @@ impl CpioBuilder {
                     )
                 })?;
                 content.append(&mut target_path.to_string_lossy().to_string().as_bytes().to_vec());
-            }
+                symlink_meta
+            };
 
             let check: u32 = match self.format {
                 CpioFormat::Newc => 0,
@@ -318,14 +323,18 @@ impl CpioBuilder {
             )?;
         }
 
-        if let Some(encoder) = encoder {
-            let compressed = encoder.finish().map_err(|_|
-                Error::EncoderError(String::from("failed when calling 'finish()' on encoder"))
-            )?;
-            out_fp.write(&compressed).map_err(|_|
-                Error::FileSystemError(String::from("failed to write compressed data to archive file"))
-            )?;
+        if gzip {
+            if let Some(encoder) = encoder {
+                encoder.finish().map_err(|_|
+                    Error::EncoderError(String::from("failed when calling 'finish()' on encoder"))
+                )?;
+            }
         } else {
+            let mut out_fp = File::create(archive_path).map_err(|_|
+                Error::FileSystemError(
+                    format!("Failed to create output file {}", archive_path.to_string_lossy())
+                )
+            )?;
             out_fp.write(&out).map_err(|_|
                 Error::FileSystemError(String::from("failed to write data to archive file"))
             )?;
