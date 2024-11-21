@@ -42,7 +42,7 @@ pub enum Error {
     StringEncodingError(String),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum CpioFormat {
     Newc,
     Crc,
@@ -175,6 +175,126 @@ pub struct CpioBuilder {
     entries: Vec<(PathBuf, String)>
 }
 
+fn entry_bytes(
+    fs_path: &Path,
+    internal_path: &str,
+    curr_len: usize,
+    format: CpioFormat,
+    inode_override: Option<u32>
+) -> Result<Vec<u8>, Error> {
+    let symlink_meta = symlink_metadata(fs_path).map_err(|e| {
+        Error::FileSystemError(
+            format!(
+                "Failed to get metadata for symlink, {e}: {}",
+                fs_path.to_string_lossy()
+            )
+        )
+    })?;
+
+    let mut content = vec![];
+    let meta = if !symlink_meta.is_symlink() {
+        let mut fp = File::open(fs_path).map_err(|_|
+            Error::FileSystemError(
+                format!("failed to read to end of file {}", fs_path.to_string_lossy())
+            )
+        )?;
+        let meta = fp.metadata().map_err(|_| {
+            Error::FileSystemError(
+                format!("Failed to get metadata for file {}", fs_path.to_string_lossy())
+            )
+        })?;
+
+        // nothing to read if path is "."
+        if internal_path != "." && meta.is_file() {
+            fp.read_to_end(&mut content).map_err(|_|
+                Error::FileSystemError(
+                    format!("failed to read to end of file {}", fs_path.to_string_lossy())
+                )
+            )?;
+        }
+        meta
+    } else {
+        // for symlinks the target path goes where the file content would
+        let target_path = read_link(fs_path).map_err(|_| {
+            Error::FileSystemError(
+                format!("Failed to read symlink target for {}", fs_path.to_string_lossy())
+            )
+        })?;
+        content.append(&mut target_path.to_string_lossy().to_string().as_bytes().to_vec());
+        symlink_meta
+    };
+
+    let check: u32 = match format {
+        CpioFormat::Newc => 0,
+        CpioFormat::Crc => {
+            let mut res = 0u32;
+            for b in &content {
+                res = res.wrapping_add(*b as u32);
+            }
+            res
+        }
+    };
+
+    let mut entry_data: Vec<u8> = vec![];
+
+    let inode = if let Some(inode) = inode_override {
+        inode
+    } else {
+        meta.st_ino() as u32
+    };
+
+    let entry = CpioBuilderEntry {
+        c_ino       : meta.st_ino() as u32,
+        c_mode      : meta.st_mode(),
+        c_uid       : meta.st_uid(),
+        c_gid       : meta.st_gid(),
+        c_nlink     : meta.st_nlink() as u32,
+        c_mtime     : meta.st_mtime() as u32,
+        c_filesize  : content.len() as u32,
+        c_devmajor  : major(meta.st_dev() as u32),
+        c_devminor  : minor(meta.st_dev() as u32),
+        c_rdevmajor : major(meta.st_rdev() as u32),
+        c_rdevminor : minor(meta.st_rdev() as u32),
+        c_namesize  : (internal_path.len() + 1) as u32,
+        c_check     : check,
+    };
+
+    entry_data.append(&mut entry.to_bytes(&format));
+
+    // null-terminated internal path
+    entry_data.append(&mut internal_path.as_bytes().to_vec());
+    entry_data.push(0);
+
+    // pad to four byte alignment before start of file contents
+    let curr = curr_len + entry_data.len();
+    if curr % 4 != 0 {
+        entry_data.resize(entry_data.len() + (4 - (curr % 4)), 0)
+    }
+
+    entry_data.append(&mut content);
+
+    // pad to four byte alignment at the end of file contents
+    let curr = curr_len + entry_data.len();
+    if curr % 4 != 0 {
+        entry_data.resize(entry_data.len() + (4 - (curr % 4)), 0)
+    }
+
+    Ok(entry_data)
+}
+
+fn trailer_bytes(format: CpioFormat) -> Vec<u8> {
+    let mut out = vec![];
+    let magic = match format {
+        CpioFormat::Newc => defs::NEWC_MAGIC,
+        CpioFormat::Crc => defs::CRC_MAGIC,
+    };
+
+    out.append(&mut magic.to_vec());
+    out.append(&mut defs::TRAILER.to_vec());
+
+    out
+}
+
 impl CpioBuilder {
     pub fn new(format: CpioFormat) -> Self {
         CpioBuilder { format, entries: vec![] }
@@ -211,110 +331,11 @@ impl CpioBuilder {
         };
 
         for (fs_path, internal_path) in &self.entries {
-
-            let symlink_meta = symlink_metadata(fs_path).map_err(|e| {
-                Error::FileSystemError(
-                    format!(
-                        "Failed to get metadata for symlink, {e}: {}",
-                        fs_path.to_string_lossy()
-                    )
-                )
-            })?;
-
-
-            let mut content = vec![];
-            let meta = if !symlink_meta.is_symlink() {
-                let mut fp = File::open(fs_path).map_err(|_|
-                    Error::FileSystemError(
-                        format!("failed to read to end of file {}", fs_path.to_string_lossy())
-                    )
-                )?;
-                let meta = fp.metadata().map_err(|_| {
-                    Error::FileSystemError(
-                        format!("Failed to get metadata for file {}", fs_path.to_string_lossy())
-                    )
-                })?;
-
-                // nothing to read if path is "."
-                if internal_path != "." && meta.is_file() {
-                    fp.read_to_end(&mut content).map_err(|_|
-                        Error::FileSystemError(
-                            format!("failed to read to end of file {}", fs_path.to_string_lossy())
-                        )
-                    )?;
-                }
-                meta
-            } else {
-                // for symlinks the target path goes where the file content would
-                let target_path = read_link(fs_path).map_err(|_| {
-                    Error::FileSystemError(
-                        format!("Failed to read symlink target for {}", fs_path.to_string_lossy())
-                    )
-                })?;
-                content.append(&mut target_path.to_string_lossy().to_string().as_bytes().to_vec());
-                symlink_meta
-            };
-
-            let check: u32 = match self.format {
-                CpioFormat::Newc => 0,
-                CpioFormat::Crc => {
-                    let mut res = 0u32;
-                    for b in &content {
-                        res = res.wrapping_add(*b as u32);
-                    }
-                    res
-                }
-            };
-
-            let mut entry_data: Vec<u8> = vec![];
-
-            let entry = CpioBuilderEntry {
-                c_ino       : meta.st_ino() as u32,
-                c_mode      : meta.st_mode(),
-                c_uid       : meta.st_uid(),
-                c_gid       : meta.st_gid(),
-                c_nlink     : meta.st_nlink() as u32,
-                c_mtime     : meta.st_mtime() as u32,
-                c_filesize  : content.len() as u32,
-                c_devmajor  : major(meta.st_dev() as u32),
-                c_devminor  : minor(meta.st_dev() as u32),
-                c_rdevmajor : major(meta.st_rdev() as u32),
-                c_rdevminor : minor(meta.st_rdev() as u32),
-                c_namesize  : (internal_path.len() + 1) as u32,
-                c_check     : check,
-            };
-
-            entry_data.append(&mut entry.to_bytes(&self.format));
-
-            // null-terminated internal path
-            entry_data.append(&mut internal_path.as_bytes().to_vec());
-            entry_data.push(0);
-
-            // pad to four byte alignment before start of file contents
-            let curr = out.len() + entry_data.len();
-            if curr % 4 != 0 {
-                entry_data.resize(entry_data.len() + (4 - (curr % 4)), 0)
-            }
-
-            entry_data.append(&mut content);
-
-            // pad to four byte alignment at the end of file contents
-            let curr = out.len() + entry_data.len();
-            if curr % 4 != 0 {
-                entry_data.resize(entry_data.len() + (4 - (curr % 4)), 0)
-            }
-
-            out.append(&mut entry_data);
+            out.append(&mut entry_bytes(fs_path, internal_path, out.len(), self.format, None)?);
         }
 
         // write trailer
-        let magic = match self.format {
-            CpioFormat::Newc => defs::NEWC_MAGIC,
-            CpioFormat::Crc => defs::CRC_MAGIC,
-        };
-
-        out.append(&mut magic.to_vec());
-        out.append(&mut defs::TRAILER.to_vec());
+        out.append(&mut trailer_bytes(self.format));
 
         // pad to 0x100 alignment
         let mut padding = vec![];
@@ -364,7 +385,7 @@ impl<'a> Cpio<'a> {
     }
 
     pub fn iter_files(&self) -> CpioEntryIter<'a> {
-        CpioEntryIter { index: 0, archive_mem: self.mem, format: self.format }
+        CpioEntryIter { index: 0, archive_mem: self.mem, format: self.format, trailer_seen: false }
     }
 
     pub fn extract_one(&self, output_path: &Path, entry: &CpioEntry) -> Result<(), Error> {
@@ -385,6 +406,40 @@ impl<'a> Cpio<'a> {
 
     }
 
+    pub fn push(&self, archive_path: &Path, fs_path: &Path, internal_path: &str) -> Result<(), Error> {
+
+        //let iter = self.iter_files();
+        //for
+        // find trailer
+        let iter = self.iter_files();
+        if let Some(last) = iter.last()? {
+            let mut dat = self.mem[..last.index].to_vec();
+            dat.append(&mut entry_bytes(fs_path, internal_path, dat.len(), last.format, None)?);
+            dat.append(&mut trailer_bytes(last.format));
+
+            // pad to 0x100 alignment
+            let mut padding = vec![];
+            if dat.len() % 100 != 0 {
+                padding.resize(4 - (dat.len() % 4), 0)
+            }
+            dat.append(&mut padding);
+
+            let mut out_fp = File::create(archive_path).map_err(|_|
+                Error::FileSystemError(
+                    format!("Failed to create output file {}", archive_path.to_string_lossy())
+                )
+            )?;
+            out_fp.write(&dat).map_err(|_|
+                Error::FileSystemError(String::from("failed to write data to archive file"))
+            )?;
+
+            Ok(())
+        } else {
+            Err(Error::InvalidArchiveError("Input archive missing trailer?".to_string()))
+        }
+
+    }
+
     pub fn unarchive(&self, output_path: &Path) -> Result<(), Error> {
         let output_path = output_path.canonicalize().map_err(|e| {
             Error::FileSystemError(e.to_string())
@@ -398,12 +453,15 @@ impl<'a> Cpio<'a> {
         }
         let mut iter = self.iter_files();
         while let Some(file) = iter.next()? {
-            self.extract_one(&output_path, &file)?
+            if !file.is_trailer()? {
+                self.extract_one(&output_path, &file)?
+            }
         }
         Ok(())
     }
 }
 
+#[derive(Debug)]
 struct CpioEntryHeader<'a> {
     c_magic     : &'a[u8],
     c_ino       : &'a[u8],
@@ -421,9 +479,10 @@ struct CpioEntryHeader<'a> {
     c_check     : &'a[u8],
 }
 
+#[derive(Debug)]
 pub struct CpioEntry<'a> {
     /// Offset into the archive of this file entry
-    index: usize,
+    pub index: usize,
 
     /// Which Cpio format is used
     format: CpioFormat,
@@ -715,6 +774,9 @@ pub struct CpioEntryIter<'a> {
 
     /// Expected format of entries
     format: CpioFormat,
+
+    /// Trailer was encountered
+    trailer_seen: bool,
 }
 
 impl<'a> FallibleIterator for CpioEntryIter<'a> {
@@ -722,6 +784,10 @@ impl<'a> FallibleIterator for CpioEntryIter<'a> {
     type Error = Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+        if self.trailer_seen {
+            return Ok(None)
+        }
+
         if self.index > self.archive_mem.len() {
             return Err(Error::EarlyEOFError)
         }
@@ -733,7 +799,7 @@ impl<'a> FallibleIterator for CpioEntryIter<'a> {
         )?;
 
         if file.is_trailer()? {
-            return Ok(None)
+            self.trailer_seen = true;
         }
 
         if !file.valid_magic()? {

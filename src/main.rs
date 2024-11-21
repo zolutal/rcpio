@@ -2,7 +2,7 @@ use fallible_iterator::FallibleIterator;
 use clap::{Parser, Subcommand};
 use memmap2::Mmap;
 
-use std::path::PathBuf;
+use std::path::{PathBuf, Path};
 use std::process::exit;
 use std::io::Write;
 use std::fs::File;
@@ -56,9 +56,16 @@ enum Commands {
         internal_path: String,
     },
     // /// Insert a single file into an existing cpio archive
-    // Push {
+    Push {
+        /// Path to the directory to archive
+        archive_path: PathBuf,
 
-    // },
+        /// Path to the file to extract
+        insert_path: PathBuf,
+
+        /// Path to the file to extract
+        internal_path: String,
+    },
     /// List the files in a cpio archive
     Ls {
         /// Path to the cpio archive to inspect
@@ -108,6 +115,10 @@ fn main() -> Result<()> {
 
             let mut iter = cpio.iter_files();
             while let Some(file) = iter.next()? {
+                if file.is_trailer()? {
+                    break;
+                }
+
                 if file.is_link()? {
                     println!(
                         "{} {:>2} {:>4} {:>4} {:>8} {} -> {}",
@@ -140,6 +151,10 @@ fn main() -> Result<()> {
 
             let mut iter = cpio.iter_files();
             while let Some(file) = iter.next()? {
+                if file.is_trailer()? {
+                    break;
+                }
+
                 let name = String::from_utf8(file.name()?.to_vec())?;
                 let trimmed_name = name.trim_end_matches('\0');
 
@@ -157,6 +172,13 @@ fn main() -> Result<()> {
             }
             eprintln!("No file found in archive for path: '{internal_path}'");
             exit(1);
+        },
+        Commands::Push { archive_path, insert_path, internal_path } => {
+            let archive = File::open(&archive_path)?;
+            let mmap = &*unsafe { Mmap::map(&archive) }?;
+
+            let cpio = Cpio::load(mmap)?;
+            cpio.push(&archive_path, &insert_path, &internal_path)?;
         },
         //Commands::Unar { archive_path, output_path } => {
         //    let archive = File::open(archive_path)?;
