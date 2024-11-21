@@ -408,8 +408,6 @@ impl<'a> Cpio<'a> {
 
     pub fn push(&self, archive_path: &Path, fs_path: &Path, internal_path: &str) -> Result<(), Error> {
 
-        //let iter = self.iter_files();
-        //for
         // find trailer
         let iter = self.iter_files();
         if let Some(last) = iter.last()? {
