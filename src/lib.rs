@@ -1,7 +1,7 @@
 mod defs;
 use defs::{CPIO_FIELD_LEN, CPIO_HEADER_LEN, CPIO_MAGIC_LEN};
 
-use std::fs::{read_link, symlink_metadata, File};
+use std::fs::{create_dir, read_link, symlink_metadata, File};
 use std::io::{Read, Write};
 use std::os::linux::fs::MetadataExt;
 use std::str::from_utf8;
@@ -32,8 +32,14 @@ pub enum Error {
     #[error("File system error: {0}")]
     FileSystemError(String),
 
-    #[error("Encoder error: {0}")]
-    EncoderError(String),
+    #[error("Gzip encoder error: {0}")]
+    GzEncoderError(String),
+
+    #[error("No such file in archive: {0}")]
+    NoSuchFile(String),
+
+    #[error("String encoding errror: {0}")]
+    StringEncodingError(String),
 }
 
 #[derive(Clone, Copy)]
@@ -319,14 +325,14 @@ impl CpioBuilder {
 
         if let Some(ref mut encoder) = encoder {
             encoder.write_all(&out).map_err(|_|
-                Error::EncoderError(String::from("failed when writing to encoder"))
+                Error::GzEncoderError(String::from("failed when writing to encoder"))
             )?;
         }
 
         if gzip {
             if let Some(encoder) = encoder {
                 encoder.finish().map_err(|_|
-                    Error::EncoderError(String::from("failed when calling 'finish()' on encoder"))
+                    Error::GzEncoderError(String::from("failed when calling 'finish()' on encoder"))
                 )?;
             }
         } else {
@@ -359,6 +365,42 @@ impl<'a> Cpio<'a> {
 
     pub fn iter_files(&self) -> CpioEntryIter<'a> {
         CpioEntryIter { index: 0, archive_mem: self.mem, format: self.format }
+    }
+
+    pub fn extract_one(&self, output_path: &Path, entry: &CpioEntry) -> Result<(), Error> {
+        let path = String::from_utf8(entry.name()?.to_vec()).map_err(|e|
+            Error::StringEncodingError(e.to_string())
+        )?;
+        let trimmed_path = path.trim_end_matches('\0');
+
+        let joined_path = output_path.join(trimmed_path).canonicalize().map_err(|e| {
+            Error::FileSystemError(e.to_string())
+        })?;
+
+        if !joined_path.starts_with(output_path) {
+
+        }
+
+        Ok(())
+
+    }
+
+    pub fn unarchive(&self, output_path: &Path) -> Result<(), Error> {
+        let output_path = output_path.canonicalize().map_err(|e| {
+            Error::FileSystemError(e.to_string())
+        })?;
+        if !output_path.exists() {
+            create_dir(&output_path).map_err(|_|
+                Error::FileSystemError(
+                    format!("Unable to create output directory: {}", output_path.display())
+                )
+            )?
+        }
+        let mut iter = self.iter_files();
+        while let Some(file) = iter.next()? {
+            self.extract_one(&output_path, &file)?
+        }
+        Ok(())
     }
 }
 

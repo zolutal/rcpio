@@ -104,7 +104,7 @@ fn main() -> Result<()> {
             let archive = File::open(archive_path)?;
             let mmap = &*unsafe { Mmap::map(&archive) }?;
 
-            let cpio = rcpio::Cpio::load(mmap)?;
+            let cpio = Cpio::load(mmap)?;
 
             let mut iter = cpio.iter_files();
             while let Some(file) = iter.next()? {
@@ -158,6 +158,13 @@ fn main() -> Result<()> {
             eprintln!("No file found in archive for path: '{internal_path}'");
             exit(1);
         },
+        //Commands::Unar { archive_path, output_path } => {
+        //    let archive = File::open(archive_path)?;
+        //    let mmap = &*unsafe { Mmap::map(&archive) }?;
+
+        //    let cpio = Cpio::load(mmap)?;
+        //    cpio.unarchive(&output_path)?;
+        //},
     }
 
     Ok(())
