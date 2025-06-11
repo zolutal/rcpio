@@ -1,9 +1,10 @@
 mod defs;
 use defs::{CPIO_FIELD_LEN, CPIO_HEADER_LEN, CPIO_MAGIC_LEN};
 
-use std::fs::{create_dir, read_link, symlink_metadata, File};
+use std::fs::{create_dir, read_link, symlink_metadata, File, OpenOptions, Permissions};
 use std::io::{Read, Write};
 use std::os::linux::fs::MetadataExt;
+use std::os::unix::fs::{symlink, PermissionsExt};
 use std::str::from_utf8;
 use std::path::{Path, PathBuf};
 
@@ -237,11 +238,11 @@ fn entry_bytes(
 
     let mut entry_data: Vec<u8> = vec![];
 
-    let inode = if let Some(inode) = inode_override {
-        inode
-    } else {
-        meta.st_ino() as u32
-    };
+    //let inode = if let Some(inode) = inode_override {
+    //    inode
+    //} else {
+    //    meta.st_ino() as u32
+    //};
 
     let entry = CpioBuilderEntry {
         c_ino       : meta.st_ino() as u32,
@@ -394,12 +395,45 @@ impl<'a> Cpio<'a> {
         )?;
         let trimmed_path = path.trim_end_matches('\0');
 
-        let joined_path = output_path.join(trimmed_path).canonicalize().map_err(|e| {
+
+        let joined_path = std::path::absolute(output_path.join(trimmed_path)).map_err(|e| {
             Error::FileSystemError(e.to_string())
         })?;
 
-        if !joined_path.starts_with(output_path) {
+        if joined_path == output_path {
+            return Ok(())
+        }
 
+        if !joined_path.starts_with(output_path) {
+            return Err(Error::FileSystemError("Encountered path was outside output directory".to_string()))
+        }
+
+        if entry.is_reg()? {
+            let mut fp = OpenOptions::new().write(true).create_new(true).open(&joined_path).map_err(|e| {
+                Error::FileSystemError(format!("{}: {}", e, joined_path.display()))
+            })?;
+
+            fp.write(entry.file_content()?).map_err(|e| {
+                Error::FileSystemError(format!("{}: {}", e, joined_path.display()))
+            })?;
+
+            fp.set_permissions(Permissions::from_mode(entry.mode()? as u32)).map_err(|e| {
+                Error::FileSystemError(format!("{}: {}", e, joined_path.display()))
+            })?;
+        } else if entry.is_dir()? {
+            create_dir(&joined_path).map_err(|e| {
+                Error::FileSystemError(format!("{}: {}", e, joined_path.display()))
+            })?;
+        } else if entry.is_link()? {
+            let target_path = String::from_utf8(entry.file_content()?.to_vec()).map_err(|e|
+                Error::FileSystemError(e.to_string())
+            )?;
+            let target_path = target_path.trim_end_matches('\0');
+            symlink(joined_path, target_path).map_err(|e|
+                Error::FileSystemError(e.to_string())
+            )?;
+        } else {
+            unimplemented!("Entry type was none of: reg, dir, link")
         }
 
         Ok(())

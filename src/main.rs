@@ -35,14 +35,14 @@ enum Commands {
         #[clap(short='g', long, action)]
         gzip: bool
     },
-    // /// Extract a cpio archive to a directory
-    // Unar {
-    //     /// Path to the directory to archive
-    //     archive_path: PathBuf,
+    /// Extract a cpio archive to a directory
+    Unar {
+        /// Path to the directory to archive
+        archive_path: PathBuf,
 
-    //     /// Output path for extracted archive
-    //     output_path: PathBuf,
-    // },
+        /// Output path for extracted archive
+        output_path: PathBuf,
+    },
     // /// Merge two cpio archives to a single archive
     // Merge {
 
@@ -180,13 +180,13 @@ fn main() -> Result<()> {
             let cpio = Cpio::load(mmap)?;
             cpio.push(&archive_path, &insert_path, &internal_path)?;
         },
-        //Commands::Unar { archive_path, output_path } => {
-        //    let archive = File::open(archive_path)?;
-        //    let mmap = &*unsafe { Mmap::map(&archive) }?;
+        Commands::Unar { archive_path, output_path } => {
+            let archive = File::open(archive_path)?;
+            let mmap = &*unsafe { Mmap::map(&archive) }?;
 
-        //    let cpio = Cpio::load(mmap)?;
-        //    cpio.unarchive(&output_path)?;
-        //},
+            let cpio = Cpio::load(mmap)?;
+            cpio.unarchive(&output_path)?;
+        },
     }
 
     Ok(())
