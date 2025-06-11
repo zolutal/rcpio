@@ -407,34 +407,58 @@ impl<'a> Cpio<'a> {
     }
 
     pub fn push(&self, archive_path: &Path, fs_path: &Path, internal_path: &str) -> Result<(), Error> {
+        let mut trailer_index: Option<usize> = None;
+        let mut trailer_format: Option<CpioFormat> = None;
 
-        // find trailer
-        let iter = self.iter_files();
-        if let Some(last) = iter.last()? {
-            let mut dat = self.mem[..last.index].to_vec();
-            dat.append(&mut entry_bytes(fs_path, internal_path, dat.len(), last.format, None)?);
-            dat.append(&mut trailer_bytes(last.format));
+        let mut iter = self.iter_files();
+        while let Some(entry) = &iter.next()? {
+            let entry_path = String::from_utf8(entry.name()?.to_vec()).map_err(|e|
+                Error::StringEncodingError(e.to_string())
+            )?;
 
-            // pad to 0x100 alignment
-            let mut padding = vec![];
-            if dat.len() % 100 != 0 {
-                padding.resize(4 - (dat.len() % 4), 0)
+            if internal_path == entry_path.trim_end_matches(char::from(0)) {
+                panic!("Cannot push a file to a path that already exists in the archive")
             }
-            dat.append(&mut padding);
 
-            let mut out_fp = File::create(archive_path).map_err(|_|
-                Error::FileSystemError(
-                    format!("Failed to create output file {}", archive_path.to_string_lossy())
-                )
-            )?;
-            out_fp.write(&dat).map_err(|_|
-                Error::FileSystemError(String::from("failed to write data to archive file"))
-            )?;
-
-            Ok(())
-        } else {
-            Err(Error::InvalidArchiveError("Input archive missing trailer?".to_string()))
+            if entry.is_trailer()? {
+                trailer_index = Some(entry.index);
+                trailer_format = Some(entry.format);
+            }
         }
+
+        let trailer_index: usize = if let Some(trailer_index) = trailer_index {
+            trailer_index
+        } else {
+            return Err(Error::InvalidArchiveError("Archive missing trailer.".to_string()))
+        };
+
+        let trailer_format: CpioFormat = if let Some(trailer_format) = trailer_format {
+            trailer_format
+        } else {
+            return Err(Error::InvalidArchiveError("Archive missing trailer.".to_string()))
+        };
+
+        let mut dat = self.mem[..trailer_index].to_vec();
+        dat.append(&mut entry_bytes(fs_path, internal_path, dat.len(), trailer_format, None)?);
+        dat.append(&mut trailer_bytes(trailer_format));
+
+        // pad to 0x100 alignment
+        let mut padding = vec![];
+        if dat.len() % 100 != 0 {
+            padding.resize(4 - (dat.len() % 4), 0)
+        }
+        dat.append(&mut padding);
+
+        let mut out_fp = File::create(archive_path).map_err(|_|
+            Error::FileSystemError(
+                format!("Failed to create output file {}", archive_path.to_string_lossy())
+            )
+        )?;
+        out_fp.write(&dat).map_err(|_|
+            Error::FileSystemError(String::from("failed to write data to archive file"))
+        )?;
+
+        Ok(())
 
     }
 
