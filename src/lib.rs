@@ -341,7 +341,7 @@ impl CpioBuilder {
         // pad to 0x100 alignment
         let mut padding = vec![];
         if out.len() % 100 != 0 {
-            padding.resize(4 - (out.len() % 4), 0)
+            padding.resize(0x100 - (out.len() % 0x100), 0)
         }
         out.append(&mut padding);
 
