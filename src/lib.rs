@@ -228,21 +228,20 @@ fn entry_bytes(
     let check: u32 = match format {
         CpioFormat::Newc => 0,
         CpioFormat::Crc => {
-            let mut res = 0u32;
-            for b in &content {
-                res = res.wrapping_add(*b as u32);
+            // COMPAT: for symlinks the CRC value is zero
+            if meta.is_symlink() {
+                0
+            } else {
+                let mut res = 0u32;
+                for b in &content {
+                    res = res.wrapping_add(*b as u32);
+                }
+                res
             }
-            res
         }
     };
 
     let mut entry_data: Vec<u8> = vec![];
-
-    //let inode = if let Some(inode) = inode_override {
-    //    inode
-    //} else {
-    //    meta.st_ino() as u32
-    //};
 
     let entry = CpioBuilderEntry {
         c_ino       : meta.st_ino() as u32,
@@ -340,8 +339,8 @@ impl CpioBuilder {
 
         // pad to 0x100 alignment
         let mut padding = vec![];
-        if out.len() % 100 != 0 {
-            padding.resize(0x100 - (out.len() % 0x100), 0)
+        if out.len() % 200 != 0 {
+            padding.resize(0x200 - (out.len() % 0x200), 0)
         }
         out.append(&mut padding);
 
@@ -429,7 +428,7 @@ impl<'a> Cpio<'a> {
                 Error::FileSystemError(e.to_string())
             )?;
             let target_path = target_path.trim_end_matches('\0');
-            symlink(joined_path, target_path).map_err(|e|
+            symlink(target_path, joined_path).map_err(|e|
                 Error::FileSystemError(e.to_string())
             )?;
         } else {
