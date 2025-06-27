@@ -5,7 +5,6 @@ use std::io::{Read, Write};
 use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::process::Command;
 use std::path::{Path, PathBuf};
-use std::thread::{sleep, sleep_ms};
 use hexdump::hexdump;
 
 fn collect_files(dir: &PathBuf) -> Vec<PathBuf> {
