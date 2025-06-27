@@ -99,8 +99,8 @@ fn test_cpio_compat() -> Result<(), rcpio::Error> {
         set_permissions(&test_file, Permissions::from_mode(0o777))
             .expect("Failed to set file permissions");
 
-
-        symlink(&test_file, test_dir.join("link")).expect("Failed to create symlink");
+        // Test Symlink
+        symlink("/dir/file", test_dir.join("link")).expect("Failed to create symlink");
     })?;
 
     let out_dir = tmpdir_path.join("unarchive");
@@ -121,7 +121,7 @@ fn test_cpio_compat() -> Result<(), rcpio::Error> {
     assert!(symlink_meta.is_symlink());
 
     let link_target = read_link(out_dir.join("dir").join("link")).expect("Failed to read link");
-    assert_eq!(link_target, tmpdir_path.join("archive").join("dir").join("file"));
+    assert_eq!(link_target, PathBuf::from("/dir/file"));
 
     tmpdir.close().expect("Failed to close tempdir");
 
