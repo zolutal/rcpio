@@ -2,7 +2,7 @@ use fallible_iterator::FallibleIterator;
 use clap::{Parser, Subcommand};
 use memmap2::Mmap;
 
-use std::path::{PathBuf, Path};
+use std::path::PathBuf;
 use std::process::exit;
 use std::io::Write;
 use std::fs::File;
@@ -73,14 +73,6 @@ enum Commands {
     },
 }
 
-fn collect_files(dir: &PathBuf) -> Vec<PathBuf> {
-    walkdir::WalkDir::new(dir)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .map(|e| e.into_path())
-        .collect()
-}
-
 fn main() -> Result<()> {
     let args = CmdArgs::parse();
     match args.commands {
@@ -90,22 +82,7 @@ fn main() -> Result<()> {
             } else {
                 rcpio::CpioFormat::Newc
             };
-
-            let mut builder = rcpio::CpioBuilder::new(format);
-
-            let files = collect_files(&directory_path);
-            for file in files {
-                if let Some(file_str) = file.to_str() {
-                    if let Some(directory_path_str) = directory_path.to_str() {
-                        let internal_path = file_str
-                            .trim_start_matches(directory_path_str)
-                            .trim_start_matches('/');
-                        println!("{}", &internal_path);
-                        builder.insert(&file, internal_path)?;
-                    }
-                }
-            }
-            builder.write(&output_path, gzip)?;
+            rcpio::archive_directory(&directory_path, &output_path, format, gzip)?;
         },
         Commands::Ls { archive_path } => {
             let archive = File::open(archive_path)?;

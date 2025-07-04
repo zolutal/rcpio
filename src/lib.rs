@@ -4,7 +4,7 @@ use defs::{CPIO_FIELD_LEN, CPIO_HEADER_LEN, CPIO_MAGIC_LEN};
 use std::fs::{create_dir, read_link, symlink_metadata, File, OpenOptions, Permissions};
 use std::io::{Read, Write};
 use std::os::linux::fs::MetadataExt;
-use std::os::unix::fs::{symlink, PermissionsExt};
+use std::os::unix::fs::{symlink, FileTypeExt, PermissionsExt};
 use std::str::from_utf8;
 use std::path::{Path, PathBuf};
 
@@ -867,4 +867,40 @@ impl<'a> FallibleIterator for CpioEntryIter<'a> {
 
         Ok(Some(file))
     }
+}
+
+/// helper function to enumerate file paths in a directory
+fn collect_files(dir: &PathBuf) -> Vec<PathBuf> {
+    walkdir::WalkDir::new(dir)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .map(|e| e.into_path())
+        .collect()
+}
+
+/// Creates a CPIO archive from the directory in `directory_path` and write the
+/// created archive to `output_path`, using the specified `format`, and optionally
+/// gzip compresses the archive according to the `gzip` argument.
+pub fn archive_directory(
+    directory_path: &PathBuf,
+    output_path: &PathBuf,
+    format: CpioFormat,
+    gzip: bool
+) -> Result<(), Error> {
+    let mut builder = CpioBuilder::new(format);
+
+    let files = collect_files(directory_path);
+    for file in files {
+        if let Some(file_str) = file.to_str() {
+            if let Some(directory_path_str) = directory_path.to_str() {
+                let internal_path = file_str
+                    .trim_start_matches(directory_path_str)
+                    .trim_start_matches('/');
+                // println!("{}", &internal_path);
+                builder.insert(&file, internal_path)?;
+            }
+        }
+    }
+    builder.write(output_path, gzip)?;
+    Ok(())
 }
